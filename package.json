@@ -4,6 +4,7 @@
   "description": "Razorpay Reimbursement Management Tool - Backend MVP",
   "main": "src/index.js",
   "scripts": {
+    "start": "npx prisma migrate deploy && node src/index.js",
     "dev": "nodemon src/index.js",
     "db:migrate": "prisma migrate dev",
     "db:seed-data": "node prisma/seed.js",
