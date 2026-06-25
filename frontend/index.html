@@ -298,10 +298,14 @@
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     AUTH SCREEN
-═══════════════════════════════════════════════════════════════════════════ -->
-<div id="auth-screen">
+<!-- Loading Screen to prevent auth-screen flash -->
+<div id="loading-screen" style="height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--text);">
+  <div class="loading-row">
+    <div class="spinner" style="width: 32px; height: 32px; border-width: 3px;"></div>
+  </div>
+</div>
+
+<div id="auth-screen" style="display:none">
   <div class="auth-wrap">
     <div class="auth-logo">
       <div class="logo-icon">R</div>
@@ -654,6 +658,7 @@ async function handleLogin(e) {
       password: document.getElementById('login-password').value,
     });
     state.user = data.data;
+    localStorage.setItem('user_session', JSON.stringify(data.data)); // Persist session in localStorage
     toast(`Welcome back, ${state.user.name}!`);
     enterApp();
   } catch (err) {
@@ -688,6 +693,7 @@ async function handleLogout() {
   try {
     await api('POST', '/rest/onboardings/logout');
   } catch {}
+  localStorage.removeItem('user_session'); // Clear persisted session
   state.user = null;
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('auth-screen').style.display = 'flex';
@@ -1051,13 +1057,48 @@ function escHtml(str) {
 
 /* ─── Check existing session on page load ────────────────────────────────── */
 (async () => {
+  // 1. Optimistic Rendering: Load from localStorage for instant display
+  const cachedSession = localStorage.getItem('user_session');
+  if (cachedSession) {
+    try {
+      const parsed = JSON.parse(cachedSession);
+      if (parsed && parsed.id) {
+        state.user = parsed;
+        document.getElementById('loading-screen').style.display = 'none';
+        enterApp();
+      }
+    } catch (err) {
+      localStorage.removeItem('user_session');
+    }
+  }
+
+  // 2. Background Validation: Verify with server
   try {
-    // Try to hit any protected endpoint – if cookie is valid we can auto-login
-    // We'll use a small trick: call /rest/employees and see if it succeeds.
-    // Actually the safest approach is to attempt login info from cookie.
-    // Since we can't read httpOnly cookies from JS, we'll just show auth screen.
-    // Nothing to do – show auth screen by default (already shown).
-  } catch {}
+    const data = await api('GET', '/rest/onboardings/me');
+    if (data && data.data) {
+      state.user = data.data;
+      localStorage.setItem('user_session', JSON.stringify(data.data)); // Update cache
+      
+      // If we don't have a cached session, hide loader and enter app now
+      if (document.getElementById('loading-screen').style.display !== 'none') {
+        document.getElementById('loading-screen').style.display = 'none';
+        enterApp();
+      } else {
+        // Silently update sidebar and navbar layout if role/name changed in background
+        updateSidebar();
+        updateNavVisibility();
+      }
+    } else {
+      throw new Error('No user data');
+    }
+  } catch (err) {
+    // Session is invalid or expired
+    localStorage.removeItem('user_session');
+    state.user = null;
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display = 'none';
+    document.getElementById('auth-screen').style.display = 'flex';
+  }
 })();
 </script>
 </body>
